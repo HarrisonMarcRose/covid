@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import requests
 from matplotlib.animation import FuncAnimation
-from matplotlib.pyplot import pcolor
+import matplotlib.lines as mlines
+from matplotlib.collections import PathCollection
 
 
 def give_me_a_straight_line(xs, ys, ws):
@@ -119,21 +120,20 @@ class GenAnimation:
                   for county in self.covid_data
                   if county.get("data", {date: None}).get(date)]
 
-            # # weights
-            # ws = [county["population"]
-            #       for county in self.covid_data
-            #       if county.get("data", {date: None}).get(date)]
+            # weights
+            ws = [county["population"]
+                  for county in self.covid_data
+                  if county.get("data", {date: None}).get(date)]
 
             cs = [county["color"]
                   for county in self.covid_data
                   if county.get("data", {date: None}).get(date)]
-            yield xs, ys, ss, cs
+            yield xs, ys, ss, cs, ws
 
     def setup_plot(self):
         """Initial drawing of the scatter plot."""
-        x, y, s, c = self.stream[0]
-        self.ax.axis([0, 100, 0, 125])
-        self.scat = self.ax.scatter(x, y, s=s, c=c)
+        x, y, s, c, w = self.stream[0]
+        self.ax.axis([5, 100, 0, 125])
 
         # x-axis label
         plt.xlabel('fully vaccinated %')
@@ -144,76 +144,45 @@ class GenAnimation:
         # showing legend
 
         # best line fit
-        # line = give_me_a_straight_line(x, y, w)
-        # self.ax.plot(x, line, 'r--', label='best fit trend-line')
-        #
-        # # pick specific points to add to the legend
-        # max_dem = max([county["pct_dem_lead"] for county in covid_data
-        #                if county["pct_dem_lead"] and county["population"] > 50000
-        #                and county.get("data", {date: None}).get(date)])
-        # dem = [county for county in covid_data if county["pct_dem_lead"] == max_dem][0]
-        # max_rep = min([county["pct_dem_lead"] for county in covid_data
-        #                if county["pct_dem_lead"] and county["population"] > 50000
-        #                and county.get("data", {date: None}).get(date)])
-        # rep = [county for county in covid_data
-        #        if county["pct_dem_lead"] == max_rep
-        #        and county.get("data", {date: None}).get(date)][0]
-        # neutral = [county for county in covid_data
-        #            if county["pct_dem_lead"] and county["population"] > 50000
-        #            and abs(county["pct_dem_lead"]) < 0.01
-        #            and county.get("data", {date: None}).get(date)][0]
-        # unknown = [county for county in covid_data
-        #            if county["pct_dem_lead"] is None
-        #            and county["population"] > 50000
-        #            and county.get("data", {date: None}).get(date)][0]
-        #
-        # # add points to legend
-        # plt.scatter([dem["data"][date]["vaccinationsCompletedRatio"] * 100],
-        #             [dem["data"][date]["caseDensity"]],
-        #             s=[max(1, dem["population"] / 10000)],
-        #             c=[dem["color"]],
-        #             label="pop: {}0K, dem: {}".format(
-        #                 int(max(1, dem["population"] / 10000)),
-        #                 "{:.1%}".format(dem["pct_dem_lead"])
-        #             ))
-        # plt.scatter([rep["data"][date]["vaccinationsCompletedRatio"] * 100],
-        #             [rep["data"][date]["caseDensity"]],
-        #             s=[max(1, rep["population"] / 10000)],
-        #             c=[rep["color"]],
-        #             label="pop: {}0K, dem: {}".format(
-        #                 int(max(1, rep["population"] / 10000)),
-        #                 "{:.1%}".format(rep["pct_dem_lead"])
-        #             ))
-        # plt.scatter([neutral["data"][date]["vaccinationsCompletedRatio"] * 100],
-        #             [neutral["data"][date]["caseDensity"]],
-        #             s=[max(1, neutral["population"] / 10000)],
-        #             c=[neutral["color"]],
-        #             label="pop: {}0K, dem: {}".format(
-        #                 int(max(1, neutral["population"] / 10000)),
-        #                 "{:.1%}".format(neutral["pct_dem_lead"])
-        #             ))
-        # plt.scatter([unknown["data"][date]["vaccinationsCompletedRatio"] * 100],
-        #             [unknown["data"][date]["caseDensity"]],
-        #             s=[max(1, unknown["population"] / 10000)],
-        #             c=[unknown["color"]],
-        #             label="pop: {}0K, dem: {}".format(
-        #                 int(max(1, unknown["population"] / 10000)),
-        #                 "unknown"
-        #             ))
-        # plt.legend()  # labels=labels)
+        line = give_me_a_straight_line(x, y, w)
+        # best = self.ax.plot(x, line, 'r--', label='best fit trend-line')
+
+        data = list(zip(x, y, s, c, w))
+        # pick specific points to add to the legend
+        dem = [point for point in data if point[3] == min(c)][0]
+        rep = [point for point in data if point[3] == max(c)][0]
+        _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
+        neutral = [point for point in data if point[3] == mid_c][0]
+        unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
+
+        # add points to legend
+        dems = self.ax.scatter([dem[0]], [dem[1]], [dem[2]], [dem[3]],
+                               label="pop: {}0K, dem".format(int(dem[2]-2)))
+        reps = self.ax.scatter([rep[0]], [rep[1]], [rep[2]], [rep[3]],
+                               label="pop: {}0K, rep".format(int(rep[2]-2)))
+        neutrals = self.ax.scatter([neutral[0]], [neutral[1]], [neutral[2]], [neutral[3]],
+                                   label="pop: {}0K, neutral".format(int(neutral[2]-2)))
+        unknowns = self.ax.scatter([unknown[0]], [unknown[1]], [unknown[2]], [unknown[3]],
+                                   label="pop: {}0K, unknown".format(int(unknown[2]-2)))
+
+        self.scat = self.ax.scatter(x, y, s=s, c=c)
+        plt.legend()
         # For FuncAnimation's sake, we need to return the artist we'll be using
         # Note that it expects a sequence of artists, thus the trailing comma.
         return self.scat,
 
     def update(self, frame):
-        x, y, s, c = self.stream[frame]
-
-        # best line fit
-        # line = give_me_a_straight_line(x, y, w)
-        # self.ax.plot(x, line, 'r--')
+        x, y, s, c, w = self.stream[frame]
         self.scat.set_offsets(np.c_[x, y])
         self.scat.set_sizes(np.array(s))
         self.scat.set_color(np.array(c))
+
+        # best line fit
+        ys = give_me_a_straight_line(x, y, w)
+        line = mlines.Line2D(x, ys)  # , 'r--')
+        transform = self.ax.transAxes
+        line.set_transform(transform)
+        # self.ax.add_line(line)
         return self.scat,
 
 
@@ -235,7 +204,7 @@ def add_election_info_to_covid_data(covid_data, election_data):
             )
         else:
             d["pct_dem_lead"] = None
-            d["color"] = np.array([0.5, 0.5, 0.5])
+            d["color"] = (0.5, 0.5, 0.5)
 
 
 def process_election_data(election_data):
