@@ -113,14 +113,10 @@ class GenAnimation:
         data = list(zip(x, y, s, c, w))
         # pick specific points to add to the legend
         dem = [point for point in data if point[3] == min(c)][0]
-        print(data.index(dem))
         rep = [point for point in data if point[3] == max(c)][0]
-        print(data.index(rep))
         _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
         neutral = [point for point in data if point[3] == mid_c][0]
-        print(data.index(neutral))
         unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
-        print(data.index(unknown))
 
         # add points to legend
         self.dems = self.ax.scatter([dem[0]], [dem[1]], [dem[2]], [dem[3]],
@@ -283,7 +279,6 @@ def main():
     # for i in range(rows):
     #     for j in range(cols):
     #         index = - 1 - step_days * i * cols - step_days * j
-    #         print(i, j, index)
     #         axs[i, j].label_outer()
     #         axs[i, j].axis([0, 100, 0, 150])
     #         axs[i, j].scatter(
