@@ -255,6 +255,21 @@ def gen_plot_data(covid_data):
     return list(data_stream())
 
 
+def fill_in_blank_dates(covid_data):
+    base = datetime.today()
+    date_list = [base - timedelta(days=x) for x in range(GenAnimation.days, 0, -GenAnimation.step)]
+    dates = [date.strftime("%Y-%m-%d") for date in date_list]
+
+    for county in covid_data:
+        last_record, current_record = None, None
+        for date in dates:
+            last_record = current_record
+            current_record = county["data"].get(date)
+            if current_record is None and last_record is not None:
+                county["data"][date] = last_record
+                current_record = last_record
+
+
 def main():
 
     election_data = get_processed_election_data()
@@ -265,6 +280,7 @@ def main():
 
     covid_data = get_covid_data()
     save_covid_data(covid_data)
+    fill_in_blank_dates(covid_data)
 
     add_election_info_to_covid_data(covid_data, election_data)
     stream_data = gen_plot_data(covid_data)
