@@ -84,9 +84,11 @@ class GenAnimation:
     days = 180
     step = 1
 
-    def __init__(self, stream):
+    def __init__(self, stream, dates):
         self.fig, self.ax = plt.subplots()
+        self.date_text = self.ax.text(50, 120, '', fontsize=12, horizontalalignment='center')
         self.stream = stream
+        self.dates = dates
         self.ani = FuncAnimation(self.fig,
                                  self.update,
                                  frames=GenAnimation.days // GenAnimation.step,
@@ -97,6 +99,7 @@ class GenAnimation:
         """Initial drawing of the scatter plot."""
         x, y, s, c, w = self.stream[0]
         self.ax.axis([0, 100, 0, 125])
+        self.date_text.set_text(self.dates[0])
 
         # x-axis label
         plt.xlabel('fully vaccinated %')
@@ -132,7 +135,7 @@ class GenAnimation:
         self.legend = plt.legend()
         # For FuncAnimation's sake, we need to return the artist we'll be using
         # Note that it expects a sequence of artists, thus the trailing comma.
-        return self.scat, self.line, self.dems, self.reps, self.neutrals, self.unknowns
+        return self.scat, self.line, self.dems, self.reps, self.neutrals, self.unknowns, self.date_text
 
     def update(self, frame):
         x, y, s, c, w = self.stream[frame]
@@ -157,13 +160,15 @@ class GenAnimation:
         self.scat.set_sizes(np.array(s))
         self.scat.set_color(np.array(c))
 
+        self.date_text.set_text(self.dates[frame])
+
         # best line fit
         ys = give_me_a_straight_line(x, y, w)
         self.line.set_xdata(x)
         self.line.set_ydata(ys)
         self.line.set_label('best fit trend-line')
 
-        return self.scat, self.line
+        return self.scat, self.line, self.date_text
 
 
 def add_election_info_to_covid_data(covid_data, election_data):
@@ -219,10 +224,7 @@ def process_election_data(election_data):
     return county_data
 
 
-def gen_plot_data(covid_data):
-    base = datetime.today()
-    date_list = [base - timedelta(days=x) for x in range(GenAnimation.days, 0, -GenAnimation.step)]
-    dates = [date.strftime("%Y-%m-%d") for date in date_list]
+def gen_plot_data(covid_data, dates):
 
     def data_stream():
         for date in dates:
@@ -283,7 +285,10 @@ def main():
     fill_in_blank_dates(covid_data)
 
     add_election_info_to_covid_data(covid_data, election_data)
-    stream_data = gen_plot_data(covid_data)
+    base = datetime.today()
+    date_list = [base - timedelta(days=x) for x in range(GenAnimation.days, 0, -GenAnimation.step)]
+    dates = [date.strftime("%Y-%m-%d") for date in date_list]
+    stream_data = gen_plot_data(covid_data, dates)
 
     # give a array of subplots for data going back in time
     # fig = plt.figure()
@@ -309,7 +314,7 @@ def main():
     #
     # plt.show()
 
-    animation = GenAnimation(stream_data)
+    animation = GenAnimation(stream_data, dates)
     plt.show()
 
 
