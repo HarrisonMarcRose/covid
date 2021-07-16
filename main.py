@@ -86,8 +86,19 @@ class GenAnimation:
 
     def __init__(self, stream, dates):
         self.fig, self.ax = plt.subplots()
-        self.date_text = self.ax.text(50, 120, '', fontsize=12, horizontalalignment='center')
         self.stream = stream
+        self.max_x = max(stream[-1][0])
+
+        # get 5 standard deviations of y values as they have an atypical distribution
+        all_ys = []
+        for frame in stream:
+            ys = frame[1]
+            for y in ys:
+                all_ys.append(y)
+        all_ys.sort()
+        self.max_y = np.std(all_ys) * 5 + sum(all_ys) / len(all_ys)
+
+        self.date_text = self.ax.text(self.max_x/2, self.max_y-5, '', fontsize=12, horizontalalignment='center')
         self.dates = dates
         self.ani = FuncAnimation(self.fig,
                                  self.update,
@@ -98,7 +109,7 @@ class GenAnimation:
     def setup_plot(self):
         """Initial drawing of the scatter plot."""
         x, y, s, c, w = self.stream[0]
-        self.ax.axis([0, 100, 0, 125])
+        self.ax.axis([0, self.max_x, 0, self.max_y])
         self.date_text.set_text(self.dates[0])
 
         # x-axis label
@@ -111,7 +122,7 @@ class GenAnimation:
 
         # best line fit
         ys = give_me_a_straight_line(x, y, w)
-        self.line, = self.ax.plot(x, ys, 'r--', label='best fit trend-line')
+        self.line, = self.ax.plot(x, ys, 'k:', label='best fit trend-line')
 
         data = list(zip(x, y, s, c, w))
         # pick specific points to add to the legend
@@ -272,6 +283,19 @@ def fill_in_blank_dates(covid_data):
                 current_record = last_record
 
 
+def select_counties(covid_data):
+    top_300 = sorted([county["population"] for county in covid_data])[:1000]
+    to_delete = []
+    for index, county in enumerate(covid_data):
+        if county["population"] not in top_300:
+            to_delete.append(index)
+
+    # in order not to change the indexes we need to delete from the end of the list first
+    to_delete.sort(reverse=True)
+    for delete in to_delete:
+        del covid_data[delete]
+
+
 def main():
 
     election_data = get_processed_election_data()
@@ -283,6 +307,7 @@ def main():
     covid_data = get_covid_data()
     save_covid_data(covid_data)
     fill_in_blank_dates(covid_data)
+    # select_counties(covid_data)
 
     add_election_info_to_covid_data(covid_data, election_data)
     base = datetime.today()
