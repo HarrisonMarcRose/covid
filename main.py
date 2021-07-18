@@ -1,15 +1,17 @@
 import json
 from datetime import datetime, timedelta
 from os import path
+from statistics import mean, StatisticsError
 
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
-from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FuncAnimation, FFMpegWriter
 
 
 def give_me_a_straight_line(xs, ys, ws):
     w, b = np.polyfit(xs, ys, w=ws, deg=1)
+    # w, b = np.polyfit(xs, ys, deg=1)  # unweighted
     line = [w * x + b for x in xs]
     return line
 
@@ -81,11 +83,11 @@ def get_covid_data():
 
 
 class GenAnimation:
-    days = 180
+    days = (datetime.today() - datetime(2021, 1, 1)).days
     step = 1
 
     def __init__(self, stream, dates):
-        self.fig, self.ax = plt.subplots()
+        self.fig, self.ax = plt.subplots(figsize=(14, 7))
         self.stream = stream
         self.max_x = max(stream[-1][0])
 
@@ -97,8 +99,10 @@ class GenAnimation:
                 all_ys.append(y)
         all_ys.sort()
         self.max_y = np.std(all_ys) * 5 + sum(all_ys) / len(all_ys)
+        # self.max_y = max(stream[-1][1])
+        # self.min_y = min(stream[0][1])
 
-        self.date_text = self.ax.text(self.max_x/2, self.max_y-5, '', fontsize=12, horizontalalignment='center')
+        self.date_text = self.ax.text(self.max_x/2, self.max_y-5, '', fontsize=12, horizontalalignment='center') # 75
         self.dates = dates
         self.ani = FuncAnimation(self.fig,
                                  self.update,
@@ -109,13 +113,13 @@ class GenAnimation:
     def setup_plot(self):
         """Initial drawing of the scatter plot."""
         x, y, s, c, w = self.stream[0]
-        self.ax.axis([0, self.max_x, 0, self.max_y])
         self.date_text.set_text(self.dates[0])
 
         # x-axis label
         plt.xlabel('fully vaccinated %')
         # frequency label
         plt.ylabel('cases per 100K')
+        # plt.ylabel('dem vs rep county')
         # plot title
         plt.title('Covid US county case vs vaccine rate (with population and 2020 election)')
         # showing legend
@@ -124,8 +128,8 @@ class GenAnimation:
         ys = give_me_a_straight_line(x, y, w)
         self.line, = self.ax.plot(x, ys, 'k:', label='best fit trend-line')
 
-        data = list(zip(x, y, s, c, w))
         # pick specific points to add to the legend
+        data = list(zip(x, y, s, c, w))
         dem = [point for point in data if point[3] == min(c)][0]
         rep = [point for point in data if point[3] == max(c)][0]
         _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
@@ -141,31 +145,18 @@ class GenAnimation:
                                    label="pop: {}0K, neutral".format(int(neutral[2]-2)))
         self.unknowns = self.ax.scatter([unknown[0]], [unknown[1]], [unknown[2]], [unknown[3]],
                                    label="pop: {}0K, unknown".format(int(unknown[2]-2)))
+        self.ax.axis([max(dem[0], rep[0], neutral[0], unknown[0]) + 1, self.max_x, 0, self.max_y])  # 80])
+        self.legend = plt.legend()
 
         self.scat = self.ax.scatter(x, y, s=s, c=c)
-        self.legend = plt.legend()
+
+        self.fig.tight_layout()
         # For FuncAnimation's sake, we need to return the artist we'll be using
         # Note that it expects a sequence of artists, thus the trailing comma.
         return self.scat, self.line, self.dems, self.reps, self.neutrals, self.unknowns, self.date_text
 
     def update(self, frame):
         x, y, s, c, w = self.stream[frame]
-
-        # data = list(zip(x, y, s, c, w))
-        # dem = [point for point in data if point[3] == min(c)][0]
-        # dem_index = data.index(dem)
-        # rep = [point for point in data if point[3] == max(c)][0]
-        # rep_index = data.index(rep)
-        # _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
-        # neutral = [point for point in data if point[3] == mid_c][0]
-        # neutral_index = data.index(neutral)
-        # unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
-        # unknown_index = data.index(unknown)
-        # self.scat.set_offsets(np.c_[x[dem_index], y[dem_index]])
-        # self.scat.set_sizes(np.array(s[dem_index]))
-        # self.scat.set_color(np.array(c[dem_index]))
-        # self.fig.legend(handles=(self.scat,),
-        #                 labels=("pop: {}0K, dem".format(int(dem[2] - 2)),))
 
         self.scat.set_offsets(np.c_[x, y])
         self.scat.set_sizes(np.array(s))
@@ -178,6 +169,8 @@ class GenAnimation:
         self.line.set_xdata(x)
         self.line.set_ydata(ys)
         self.line.set_label('best fit trend-line')
+
+        self.dems, self.reps, self.neutrals, self.unknowns = None, None, None, None
 
         return self.scat, self.line, self.date_text
 
@@ -245,10 +238,15 @@ def gen_plot_data(covid_data, dates):
                   for county in covid_data
                   if county.get("data", {date: None}).get(date)]
 
-            # y-axis values
+            # y-axis values case density
             ys = [county["data"][date]["caseDensity"]
                   for county in covid_data
                   if county.get("data", {date: None}).get(date)]
+
+            # y-axis based on 2020 election margin
+            # ys = [county["pct_dem_lead"]
+            #       for county in covid_data
+            #       if county.get("data", {date: None}).get(date) and county["pct_dem_lead"]]
 
             # size
             ss = [max(1, county["population"] / 10000) + 2
@@ -263,6 +261,29 @@ def gen_plot_data(covid_data, dates):
             cs = [county["color"]
                   for county in covid_data
                   if county.get("data", {date: None}).get(date)]
+
+            # chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
+            # for limit in range(int(min(xs)//10), int(max([x for x in xs if x < 100])//10 * 10 +10), 10):
+            #     # if date == dates[-1]:
+            #     if [x for x in xs if limit <= x < limit + 10]:
+            #         chuncked_xs.append(mean([x for x in xs if limit <= x < limit + 10]))
+            #         chuncked_ss.append(sum([w / 10000 for w, x in list(zip(ws, xs)) if limit <= x < limit + 10]))
+            #         chuncked_ys.append(np.average(
+            #             [y for y, x in list(zip(ys, xs)) if limit <= x < limit + 10],
+            #             weights=[w for w, x in list(zip(ws, xs)) if limit <= x < limit + 10]))
+            #         chuncked_cs.append(
+            #             (
+            #                 np.average(
+            #                     [c[0] for c, x in list(zip(cs, xs)) if limit <= x < limit + 10],
+            #                     weights=[w for w, x in list(zip(ws, xs)) if limit <= x < limit + 10]),
+            #                 np.average(
+            #                     [c[1] for c, x in list(zip(cs, xs)) if limit <= x < limit + 10],
+            #                     weights=[w for w, x in list(zip(ws, xs)) if limit <= x < limit + 10]),
+            #                 np.average(
+            #                     [c[2] for c, x in list(zip(cs, xs)) if limit <= x < limit + 10],
+            #                     weights=[w for w, x in list(zip(ws, xs)) if limit <= x < limit + 10])))
+            #
+            # yield chuncked_xs, chuncked_ys, chuncked_ss, chuncked_cs, chuncked_ss
             yield xs, ys, ss, cs, ws
 
     return list(data_stream())
@@ -340,6 +361,12 @@ def main():
     # plt.show()
 
     animation = GenAnimation(stream_data, dates)
+
+    # to save an animation you need to have ffmpeg installed: brew install ffmpeg
+    f = "covid_animation.mp4"
+    writer_mp4 = FFMpegWriter(fps=15)
+    animation.ani.save(f, writer=writer_mp4)
+
     plt.show()
 
 
