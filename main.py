@@ -99,8 +99,8 @@ class GenAnimation:
                 all_ys.append(y)
         all_ys.sort()
         self.max_y = np.std(all_ys) * 5 + sum(all_ys) / len(all_ys)
-        # self.max_y = max(stream[-1][1])
-        # self.min_y = min(stream[0][1])
+        self.max_y = max(stream[-1][1])
+        self.min_y = min(stream[-1][1])
 
         self.date_text = self.ax.text(self.max_x/2, self.max_y-5, '', fontsize=12, horizontalalignment='center') # 75
         self.dates = dates
@@ -118,42 +118,46 @@ class GenAnimation:
         # x-axis label
         plt.xlabel('fully vaccinated %')
         # frequency label
-        plt.ylabel('cases per 100K')
+        # plt.ylabel('cases per 100K')
+        plt.ylabel('2020 election margin')
         # plt.ylabel('dem vs rep county')
         # plot title
-        plt.title('Covid US county case vs vaccine rate (with population and 2020 election)')
+        # plt.title('Covid US county case vs vaccine rate (with population and 2020 election)')
+        plt.title('Covid US county vaccine rate vs 2020 election (size=population)')
         # showing legend
 
-        # best line fit
-        ys = give_me_a_straight_line(x, y, w)
-        self.line, = self.ax.plot(x, ys, 'k:', label='best fit trend-line')
+        # # best line fit
+        # ys = give_me_a_straight_line(x, y, w)
+        # self.line, = self.ax.plot(x, ys, 'k:', label='best fit trend-line')
 
-        # pick specific points to add to the legend
-        data = list(zip(x, y, s, c, w))
-        dem = [point for point in data if point[3] == min(c)][0]
-        rep = [point for point in data if point[3] == max(c)][0]
-        _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
-        neutral = [point for point in data if point[3] == mid_c][0]
-        unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
+        # # pick specific points to add to the legend
+        # data = list(zip(x, y, s, c, w))
+        # dem = [point for point in data if point[3] == min(c)][0]
+        # rep = [point for point in data if point[3] == max(c)][0]
+        # _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
+        # neutral = [point for point in data if point[3] == mid_c][0]
+        # unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
+        #
+        # # add points to legend
+        # self.dems = self.ax.scatter([dem[0]], [dem[1]], [dem[2]], [dem[3]],
+        #                        label="pop: {}0K, dem".format(int(dem[2]-2)))
+        # self.reps = self.ax.scatter([rep[0]], [rep[1]], [rep[2]], [rep[3]],
+        #                        label="pop: {}0K, rep".format(int(rep[2]-2)))
+        # self.neutrals = self.ax.scatter([neutral[0]], [neutral[1]], [neutral[2]], [neutral[3]],
+        #                            label="pop: {}0K, neutral".format(int(neutral[2]-2)))
+        # self.unknowns = self.ax.scatter([unknown[0]], [unknown[1]], [unknown[2]], [unknown[3]],
+        #                            label="pop: {}0K, unknown".format(int(unknown[2]-2)))
+        # self.legend = plt.legend()
 
-        # add points to legend
-        self.dems = self.ax.scatter([dem[0]], [dem[1]], [dem[2]], [dem[3]],
-                               label="pop: {}0K, dem".format(int(dem[2]-2)))
-        self.reps = self.ax.scatter([rep[0]], [rep[1]], [rep[2]], [rep[3]],
-                               label="pop: {}0K, rep".format(int(rep[2]-2)))
-        self.neutrals = self.ax.scatter([neutral[0]], [neutral[1]], [neutral[2]], [neutral[3]],
-                                   label="pop: {}0K, neutral".format(int(neutral[2]-2)))
-        self.unknowns = self.ax.scatter([unknown[0]], [unknown[1]], [unknown[2]], [unknown[3]],
-                                   label="pop: {}0K, unknown".format(int(unknown[2]-2)))
-        self.ax.axis([max(dem[0], rep[0], neutral[0], unknown[0]) + 1, self.max_x, 0, self.max_y])  # 80])
-        self.legend = plt.legend()
+        self.ax.axis(
+            [0, self.max_x, self.min_y - 5, self.max_y + 5])  # 80])
 
         self.scat = self.ax.scatter(x, y, s=s, c=c)
 
         self.fig.tight_layout()
         # For FuncAnimation's sake, we need to return the artist we'll be using
         # Note that it expects a sequence of artists, thus the trailing comma.
-        return self.scat, self.line, self.dems, self.reps, self.neutrals, self.unknowns, self.date_text
+        return self.scat, self.date_text,  # self.line, self.dems, self.reps, self.neutrals, self.unknowns
 
     def update(self, frame):
         x, y, s, c, w = self.stream[frame]
@@ -164,15 +168,15 @@ class GenAnimation:
 
         self.date_text.set_text(self.dates[frame])
 
-        # best line fit
-        ys = give_me_a_straight_line(x, y, w)
-        self.line.set_xdata(x)
-        self.line.set_ydata(ys)
-        self.line.set_label('best fit trend-line')
+        # # best line fit
+        # ys = give_me_a_straight_line(x, y, w)
+        # self.line.set_xdata(x)
+        # self.line.set_ydata(ys)
+        # self.line.set_label('best fit trend-line')
 
         self.dems, self.reps, self.neutrals, self.unknowns = None, None, None, None
 
-        return self.scat, self.line, self.date_text
+        return self.scat, self.date_text,  # self.line
 
 
 def add_election_info_to_covid_data(covid_data, election_data):
@@ -236,7 +240,7 @@ def gen_plot_data(covid_data, dates):
             # x-axis values
             xs = [county["data"][date]["vaccinationsCompletedRatio"] * 100
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
+                  if county.get("data", {date: None}).get(date) and county["pct_dem_lead"]]
 
             # y-axis values case density
             ys = [county["data"][date]["caseDensity"]
@@ -244,23 +248,23 @@ def gen_plot_data(covid_data, dates):
                   if county.get("data", {date: None}).get(date)]
 
             # y-axis based on 2020 election margin
-            # ys = [county["pct_dem_lead"]
-            #       for county in covid_data
-            #       if county.get("data", {date: None}).get(date) and county["pct_dem_lead"]]
+            ys = [county["pct_dem_lead"] * 100
+                  for county in covid_data
+                  if county.get("data", {date: None}).get(date) and county["pct_dem_lead"]]
 
             # size
             ss = [max(1, county["population"] / 10000) + 2
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
+                  if county.get("data", {date: None}).get(date) and county["pct_dem_lead"]]
 
             # weights
             ws = [county["population"]
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
+                  if county.get("data", {date: None}).get(date) and county["pct_dem_lead"]]
 
             cs = [county["color"]
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
+                  if county.get("data", {date: None}).get(date) and county["pct_dem_lead"]]
 
             # chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
             # for limit in range(int(min(xs)//10), int(max([x for x in xs if x < 100])//10 * 10 +10), 10):
@@ -364,6 +368,7 @@ def main():
 
     # to save an animation you need to have ffmpeg installed: brew install ffmpeg
     f = "covid_animation.mp4"
+    f = "covid_animation_margin.mp4"
     writer_mp4 = FFMpegWriter(fps=15)
     animation.ani.save(f, writer=writer_mp4)
 
