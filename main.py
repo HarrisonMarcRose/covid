@@ -102,7 +102,7 @@ class GenAnimation:
         # self.max_y = max(stream[-1][1])
         # self.min_y = min(stream[0][1])
 
-        self.date_text = self.ax.text(self.max_x/2, self.max_y-5, '', fontsize=12, horizontalalignment='center') # 75
+        self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12, horizontalalignment='center') # 75
         self.dates = dates
         self.ani = FuncAnimation(self.fig,
                                  self.update,
@@ -236,12 +236,28 @@ def gen_plot_data(covid_data, dates):
             # x-axis values
             xs = [county["data"][date]["vaccinationsCompletedRatio"] * 100
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
+                  if county
+                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                      .get(date, {"vaccinationsCompletedRatio": None})
+                      .get("vaccinationsCompletedRatio") is not None
+                  and county
+                      .get("data", {date: {"caseDensity": None}})
+                      .get(date, {"caseDensity": None})
+                      .get("caseDensity") is not None
+                  ]
 
             # y-axis values case density
             ys = [county["data"][date]["caseDensity"]
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
+                  if county
+                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                      .get(date, {"vaccinationsCompletedRatio": None})
+                      .get("vaccinationsCompletedRatio") is not None
+                  and county
+                      .get("data", {date: {"caseDensity": None}})
+                      .get(date, {"caseDensity": None})
+                      .get("caseDensity") is not None
+                  ]
 
             # y-axis based on 2020 election margin
             # ys = [county["pct_dem_lead"]
@@ -251,17 +267,38 @@ def gen_plot_data(covid_data, dates):
             # size
             ss = [max(1, county["population"] / 10000) + 2
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
-
+                  if county
+                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                      .get(date, {"vaccinationsCompletedRatio": None})
+                      .get("vaccinationsCompletedRatio") is not None
+                  and county
+                      .get("data", {date: {"caseDensity": None}})
+                      .get(date, {"caseDensity": None})
+                      .get("caseDensity") is not None
+                  ]
             # weights
             ws = [county["population"]
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
-
+                  if county
+                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                      .get(date, {"vaccinationsCompletedRatio": None})
+                      .get("vaccinationsCompletedRatio") is not None
+                  and county
+                      .get("data", {date: {"caseDensity": None}})
+                      .get(date, {"caseDensity": None})
+                      .get("caseDensity") is not None
+                  ]
             cs = [county["color"]
                   for county in covid_data
-                  if county.get("data", {date: None}).get(date)]
-
+                  if county
+                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                      .get(date, {"vaccinationsCompletedRatio": None})
+                      .get("vaccinationsCompletedRatio") is not None
+                  and county
+                      .get("data", {date: {"caseDensity": None}})
+                      .get(date, {"caseDensity": None})
+                      .get("caseDensity") is not None
+                  ]
             # chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
             # for limit in range(int(min(xs)//10), int(max([x for x in xs if x < 100])//10 * 10 +10), 10):
             #     # if date == dates[-1]:
