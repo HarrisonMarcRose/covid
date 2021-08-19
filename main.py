@@ -98,11 +98,14 @@ class GenAnimation:
             for y in ys:
                 all_ys.append(y)
         all_ys.sort()
-        self.max_y = np.std(all_ys) * 5 + sum(all_ys) / len(all_ys)
+        self.max_y = np.std(all_ys) * 6 + sum(all_ys) / len(all_ys)
         # self.max_y = max(stream[-1][1])
         # self.min_y = min(stream[0][1])
 
-        self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12, horizontalalignment='center') # 75
+        self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12, horizontalalignment='center')
+        self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .95, '', fontsize=12,
+                                          horizontalalignment='center')
+
         self.dates = dates
         self.ani = FuncAnimation(self.fig,
                                  self.update,
@@ -114,6 +117,7 @@ class GenAnimation:
         """Initial drawing of the scatter plot."""
         x, y, s, c, w = self.stream[0]
         self.date_text.set_text(self.dates[0])
+        self.counties_text.set_text("{} counties".format(len(x)))
 
         # x-axis label
         plt.xlabel('fully vaccinated %')
@@ -153,7 +157,7 @@ class GenAnimation:
         self.fig.tight_layout()
         # For FuncAnimation's sake, we need to return the artist we'll be using
         # Note that it expects a sequence of artists, thus the trailing comma.
-        return self.scat, self.line, self.dems, self.reps, self.neutrals, self.unknowns, self.date_text
+        return self.scat, self.line, self.dems, self.reps, self.neutrals, self.unknowns, self.date_text, self.counties_text
 
     def update(self, frame):
         x, y, s, c, w = self.stream[frame]
@@ -163,6 +167,7 @@ class GenAnimation:
         self.scat.set_color(np.array(c))
 
         self.date_text.set_text(self.dates[frame])
+        self.counties_text.set_text("{} counties".format(len(x)))
 
         # best line fit
         ys = give_me_a_straight_line(x, y, w)
@@ -172,7 +177,7 @@ class GenAnimation:
 
         self.dems, self.reps, self.neutrals, self.unknowns = None, None, None, None
 
-        return self.scat, self.line, self.date_text
+        return self.scat, self.line, self.date_text, self.counties_text
 
 
 def add_election_info_to_covid_data(covid_data, election_data):
