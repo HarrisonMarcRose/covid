@@ -98,8 +98,8 @@ class GenAnimation:
             for y in ys:
                 all_ys.append(y)
         all_ys.sort()
-        # self.max_y = np.std(all_ys) * 5 + sum(all_ys) / len(all_ys)
-        self.max_y = max(all_ys)
+        self.max_y = np.std(all_ys) * 5 + sum(all_ys) / len(all_ys)
+        # self.max_y = max(all_ys)
         self.min_y = min(all_ys)
 
         self.date_text = self.ax.text(self.max_x/2, self.max_y-5, '', fontsize=12, horizontalalignment='center') # 75
