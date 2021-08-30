@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timedelta
 from enum import Enum
 from os import path
+from statistics import mean
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -114,6 +115,19 @@ class GenAnimation:
         self.line, self.legend, self.scat = None, None, None
         self.dems, self.reps, self.neutrals, self.unknowns = None, None, None, None
 
+        if graph != CovidType.GROUPED_CASES:
+            # pick specific points to add to the legend
+            x, y, s, c, w = self.stream[0]
+            data = list(zip(x, y, s, c, w))
+            self.dem = [point for point in data if point[3] == min(c)][0]
+            self.rep = [point for point in data if point[3] == max(c)][0]
+            _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
+            self.neutral = [point for point in data if point[3] == mid_c][0]
+            self.unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
+
+            self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .95, '', fontsize=12,
+                                              horizontalalignment='center')
+
         # get 5 standard deviations of y values as they have an atypical distribution
         all_ys = []
         for frame in stream:
@@ -121,14 +135,19 @@ class GenAnimation:
             for y in ys:
                 all_ys.append(y)
         all_ys.sort()
-        self.max_y = np.std(all_ys) * 6 + sum(all_ys) / len(all_ys)
+        if graph in (CovidType.CASES, CovidType.DEATHS):
+            self.max_y = np.std(all_ys) * 6 + sum(all_ys) / len(all_ys)
+            self.min_y = 0
+            self.min_x = max(self.dem[0], self.rep[0], self.neutral[0], self.unknown[0]) + 1
+        else:
+            self.max_y = np.std(all_ys) * 2 + sum(all_ys) / len(all_ys)
+            self.min_y = min(all_ys)
+            self.min_x = 0
         # self.max_y = max(stream[-1][1])
         # self.min_y = min(stream[0][1])
 
         self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12,
                                       horizontalalignment='center')
-        self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .95, '', fontsize=12,
-                                          horizontalalignment='center')
 
         self.dates = dates
         self.ani = FuncAnimation(self.fig,
@@ -141,7 +160,8 @@ class GenAnimation:
         """Initial drawing of the scatter plot."""
         x, y, s, c, w = self.stream[0]
         self.date_text.set_text(self.dates[0])
-        self.counties_text.set_text("{} counties".format(len(x)))
+        if self.graph != CovidType.GROUPED_CASES:
+            self.counties_text.set_text("{} counties".format(len(x)))
 
         # x-axis label
         plt.xlabel('fully vaccinated %')
@@ -149,6 +169,7 @@ class GenAnimation:
         # y-axis label
         y_labels = {
             CovidType.CASES: 'cases per 100K',
+            CovidType.GROUPED_CASES: 'cases per 100K',
             CovidType.DEATHS: 'deaths per 100K',
             CovidType.VACCINATED: 'dem vs rep county'
         }
@@ -158,6 +179,8 @@ class GenAnimation:
         titles = {
             CovidType.CASES: 'Covid US county case vs vaccine rate '
                              '(with population and 2020 election)',
+            CovidType.GROUPED_CASES: 'Covid US county case vs vaccine rate '
+                                     '(with population and 2020 election)',
             CovidType.DEATHS: 'Covid US county death vs vaccine rate '
                               '(with population and 2020 election)'
         }
@@ -168,33 +191,32 @@ class GenAnimation:
         ys = give_me_a_straight_line(x, y, w)
         self.line, = self.ax.plot(x, ys, 'k:', label='best fit trend-line')
 
-        # pick specific points to add to the legend
-        data = list(zip(x, y, s, c, w))
-        dem = [point for point in data if point[3] == min(c)][0]
-        rep = [point for point in data if point[3] == max(c)][0]
-        _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
-        neutral = [point for point in data if point[3] == mid_c][0]
-        unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
-
-        # add points to legend
-        self.dems = self.ax.scatter([dem[0]], [dem[1]], [dem[2]], [dem[3]],
-                                    label="pop: {}0K, dem".format(int(dem[2]-2)))
-        self.reps = self.ax.scatter([rep[0]], [rep[1]], [rep[2]], [rep[3]],
-                                    label="pop: {}0K, rep".format(int(rep[2]-2)))
-        self.neutrals = self.ax.scatter([neutral[0]], [neutral[1]], [neutral[2]], [neutral[3]],
-                                        label="pop: {}0K, neutral".format(int(neutral[2]-2)))
-        self.unknowns = self.ax.scatter([unknown[0]], [unknown[1]], [unknown[2]], [unknown[3]],
-                                        label="pop: {}0K, unknown".format(int(unknown[2]-2)))
-        self.ax.axis([max(dem[0], rep[0], neutral[0], unknown[0]) + 1, self.max_x, 0, self.max_y])
+        if self.graph != CovidType.GROUPED_CASES:
+            # add points to legend
+            self.dems = self.ax.scatter(
+                [self.dem[0]], [self.dem[1]], [self.dem[2]], [self.dem[3]],
+                label="pop: {}0K, dem".format(int(self.dem[2]-2)))
+            self.reps = self.ax.scatter(
+                [self.rep[0]], [self.rep[1]], [self.rep[2]], [self.rep[3]],
+                label="pop: {}0K, rep".format(int(self.rep[2]-2)))
+            self.neutrals = self.ax.scatter(
+                [self.neutral[0]], [self.neutral[1]], [self.neutral[2]], [self.neutral[3]],
+                label="pop: {}0K, neutral".format(int(self.neutral[2]-2)))
+            self.unknowns = self.ax.scatter(
+                [self.unknown[0]], [self.unknown[1]], [self.unknown[2]], [self.unknown[3]],
+                label="pop: {}0K, unknown".format(int(self.unknown[2]-2)))
+        self.ax.axis([self.min_x, self.max_x, self.min_y, self.max_y])
         self.legend = plt.legend()
 
         self.scat = self.ax.scatter(x, y, s=s, c=c)
 
         self.fig.tight_layout()
-        # For FuncAnimation's sake, we need to return the artist we'll be using
-        # Note that it expects a sequence of artists, thus the trailing comma.
-        return self.scat, self.line, self.dems, self.reps, self.neutrals, \
-            self.unknowns, self.date_text, self.counties_text
+
+        if self.graph == CovidType.GROUPED_CASES:
+            return self.scat, self.line, self.date_text
+
+        return self.scat, self.line,  self.date_text, self.counties_text,\
+            self.dems, self.reps, self.neutrals, self.unknowns
 
     def update(self, frame):
         x, y, s, c, w = self.stream[frame]
@@ -204,7 +226,8 @@ class GenAnimation:
         self.scat.set_color(np.array(c))
 
         self.date_text.set_text(self.dates[frame])
-        self.counties_text.set_text("{} counties".format(len(x)))
+        if self.graph != CovidType.GROUPED_CASES:
+            self.counties_text.set_text("{} counties".format(len(x)))
 
         # best line fit
         ys = give_me_a_straight_line(x, y, w)
@@ -213,6 +236,9 @@ class GenAnimation:
         self.line.set_label('best fit trend-line')
 
         self.dems, self.reps, self.neutrals, self.unknowns = None, None, None, None
+
+        if self.graph == CovidType.GROUPED_CASES:
+            return self.scat, self.line, self.date_text
 
         return self.scat, self.line, self.date_text, self.counties_text
 
@@ -274,6 +300,7 @@ def gen_plot_data(covid_data, dates, graph_type: CovidType):
 
     y_values = {
         CovidType.CASES: "caseDensity",
+        CovidType.GROUPED_CASES: "caseDensity",
         CovidType.DEATHS: "deathDensity"
 
     }
@@ -347,28 +374,36 @@ def gen_plot_data(covid_data, dates, graph_type: CovidType):
                       .get(date, {y_values[graph_type]: None})
                       .get(y_values[graph_type]) is not None
                   ]
-            # chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
-            # for limit in range(int(min(xs)//10), int(max([x for x in xs if x < 100])//10 * 10 +10), 10):
-            #     # if date == dates[-1]:
-            #     if [x for x in xs if limit <= x < limit + 10]:
-            #         chuncked_xs.append(mean([x for x in xs if limit <= x < limit + 10]))
-            #         chuncked_ss.append(sum([w / 10000 for w, x in list(zip(ws, xs)) if limit <= x < limit + 10]))
-            #         chuncked_ys.append(np.average(
-            #             [y for y, x in list(zip(ys, xs)) if limit <= x < limit + 10],
-            #             weights=[w for w, x in list(zip(ws, xs)) if limit <= x < limit + 10]))
-            #         chuncked_cs.append(
-            #             (
-            #                 np.average(
-            #                     [c[0] for c, x in list(zip(cs, xs)) if limit <= x < limit + 10],
-            #                     weights=[w for w, x in list(zip(ws, xs)) if limit <= x < limit + 10]),
-            #                 np.average(
-            #                     [c[1] for c, x in list(zip(cs, xs)) if limit <= x < limit + 10],
-            #                     weights=[w for w, x in list(zip(ws, xs)) if limit <= x < limit + 10]),
-            #                 np.average(
-            #                     [c[2] for c, x in list(zip(cs, xs)) if limit <= x < limit + 10],
-            #                     weights=[w for w, x in list(zip(ws, xs)) if limit <= x < limit + 10])))
-            #
-            # yield chuncked_xs, chuncked_ys, chuncked_ss, chuncked_cs, chuncked_ss
+            if graph_type == CovidType.GROUPED_CASES:
+                chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
+                for limit in range(int(min(xs)//10),
+                                   int(max([x for x in xs if x < 100])//10 * 10 + 10), 10):
+
+                    if [x for x in xs if limit <= x < limit + 10]:
+                        chuncked_xs.append(mean([x for x in xs if limit <= x < limit + 10]))
+                        chuncked_ss.append(sum([w / 10000 for w, x in list(zip(ws, xs))
+                                                if limit <= x < limit + 10]))
+                        chuncked_ys.append(np.average([y for y, x in list(zip(ys, xs))
+                                                       if limit <= x < limit + 10],
+                                                      weights=[w for w, x in list(zip(ws, xs))
+                                                               if limit <= x < limit + 10]))
+                        chuncked_cs.append(
+                            (
+                                np.average([c[0] for c, x in list(zip(cs, xs))
+                                            if limit <= x < limit + 10],
+                                           weights=[w for w, x in list(zip(ws, xs))
+                                                    if limit <= x < limit + 10]),
+                                np.average([c[1] for c, x in list(zip(cs, xs))
+                                            if limit <= x < limit + 10],
+                                           weights=[w for w, x in list(zip(ws, xs))
+                                                    if limit <= x < limit + 10]),
+                                np.average([c[2] for c, x in list(zip(cs, xs))
+                                            if limit <= x < limit + 10],
+                                           weights=[w for w, x in list(zip(ws, xs))
+                                                    if limit <= x < limit + 10])))
+
+                yield chuncked_xs, chuncked_ys, chuncked_ss, chuncked_cs, chuncked_ss
+                continue
             yield xs, ys, ss, cs, ws
 
     return list(data_stream())
@@ -440,7 +475,7 @@ def select_counties(covid_data):
 
 def main():
 
-    graph_type = CovidType.DEATHS
+    graph_type = CovidType.GROUPED_CASES
 
     election_data = get_processed_election_data()
     if election_data is None:
@@ -489,6 +524,7 @@ def main():
     # to save an animation you need to have ffmpeg installed: brew install ffmpeg
     file_names = {
         CovidType.CASES: "covid_animation.mp4",
+        CovidType.GROUPED_CASES: "covid_animation_grouped.mp4",
         CovidType.DEATHS: "covid_animation_death.mp4"
     }
     f = file_names[graph_type]
