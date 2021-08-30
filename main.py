@@ -1,12 +1,19 @@
 import json
 from datetime import datetime, timedelta
+from enum import Enum
 from os import path
-from statistics import mean, StatisticsError
 
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
 from matplotlib.animation import FuncAnimation, FFMpegWriter
+
+
+class CovidType(Enum):
+    CASES = 0
+    VACCINATED = 1
+    GROUPED_CASES = 2
+    DEATHS = 3
 
 
 def give_me_a_straight_line(xs, ys, ws):
@@ -17,8 +24,10 @@ def give_me_a_straight_line(xs, ys, ws):
 
 
 def save_covid_data(covid_data):
-    if not path.exists('covidactnow-{}.timeseries.json'.format(datetime.today().strftime("%Y-%m-%d"))):
-        with open('covidactnow-{}.timeseries.json'.format(datetime.today().strftime("%Y-%m-%d")), 'w') as file:
+    if not path.exists('covidactnow-{}.timeseries.json'.format(
+            datetime.today().strftime("%Y-%m-%d"))):
+        with open('covidactnow-{}.timeseries.json'.format(
+                datetime.today().strftime("%Y-%m-%d")), 'w') as file:
             return file.write(json.dumps(covid_data))
 
     return None
@@ -79,6 +88,17 @@ def get_covid_data():
                         }
                 })
 
+        for item in county["actualsTimeseries"]:
+            if item.get("deaths") is not None:
+                if data[-1]["data"].get(item["date"]):
+                    data[-1]["data"][item["date"]].update(
+                        {"totalDeaths": item["deaths"]})
+                else:
+                    data[-1]["data"].update({
+                        item["date"]:
+                            {"totalDeaths": item["deaths"]}
+                    })
+
     return data
 
 
@@ -86,10 +106,13 @@ class GenAnimation:
     days = (datetime.today() - datetime(2021, 1, 1)).days
     step = 1
 
-    def __init__(self, stream, dates):
+    def __init__(self, stream, dates, graph: CovidType):
         self.fig, self.ax = plt.subplots(figsize=(14, 7))
         self.stream = stream
         self.max_x = max(stream[-1][0])
+        self.graph = graph
+        self.line, self.legend, self.scat = None, None, None
+        self.dems, self.reps, self.neutrals, self.unknowns = None, None, None, None
 
         # get 5 standard deviations of y values as they have an atypical distribution
         all_ys = []
@@ -102,7 +125,8 @@ class GenAnimation:
         # self.max_y = max(stream[-1][1])
         # self.min_y = min(stream[0][1])
 
-        self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12, horizontalalignment='center')
+        self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12,
+                                      horizontalalignment='center')
         self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .95, '', fontsize=12,
                                           horizontalalignment='center')
 
@@ -121,11 +145,23 @@ class GenAnimation:
 
         # x-axis label
         plt.xlabel('fully vaccinated %')
-        # frequency label
-        plt.ylabel('cases per 100K')
-        # plt.ylabel('dem vs rep county')
+
+        # y-axis label
+        y_labels = {
+            CovidType.CASES: 'cases per 100K',
+            CovidType.DEATHS: 'deaths per 100K',
+            CovidType.VACCINATED: 'dem vs rep county'
+        }
+        plt.ylabel(y_labels.get(self.graph))
+
         # plot title
-        plt.title('Covid US county case vs vaccine rate (with population and 2020 election)')
+        titles = {
+            CovidType.CASES: 'Covid US county case vs vaccine rate '
+                             '(with population and 2020 election)',
+            CovidType.DEATHS: 'Covid US county death vs vaccine rate '
+                              '(with population and 2020 election)'
+        }
+        plt.title(titles.get(self.graph))
         # showing legend
 
         # best line fit
@@ -142,14 +178,14 @@ class GenAnimation:
 
         # add points to legend
         self.dems = self.ax.scatter([dem[0]], [dem[1]], [dem[2]], [dem[3]],
-                               label="pop: {}0K, dem".format(int(dem[2]-2)))
+                                    label="pop: {}0K, dem".format(int(dem[2]-2)))
         self.reps = self.ax.scatter([rep[0]], [rep[1]], [rep[2]], [rep[3]],
-                               label="pop: {}0K, rep".format(int(rep[2]-2)))
+                                    label="pop: {}0K, rep".format(int(rep[2]-2)))
         self.neutrals = self.ax.scatter([neutral[0]], [neutral[1]], [neutral[2]], [neutral[3]],
-                                   label="pop: {}0K, neutral".format(int(neutral[2]-2)))
+                                        label="pop: {}0K, neutral".format(int(neutral[2]-2)))
         self.unknowns = self.ax.scatter([unknown[0]], [unknown[1]], [unknown[2]], [unknown[3]],
-                                   label="pop: {}0K, unknown".format(int(unknown[2]-2)))
-        self.ax.axis([max(dem[0], rep[0], neutral[0], unknown[0]) + 1, self.max_x, 0, self.max_y])  # 80])
+                                        label="pop: {}0K, unknown".format(int(unknown[2]-2)))
+        self.ax.axis([max(dem[0], rep[0], neutral[0], unknown[0]) + 1, self.max_x, 0, self.max_y])
         self.legend = plt.legend()
 
         self.scat = self.ax.scatter(x, y, s=s, c=c)
@@ -157,7 +193,8 @@ class GenAnimation:
         self.fig.tight_layout()
         # For FuncAnimation's sake, we need to return the artist we'll be using
         # Note that it expects a sequence of artists, thus the trailing comma.
-        return self.scat, self.line, self.dems, self.reps, self.neutrals, self.unknowns, self.date_text, self.counties_text
+        return self.scat, self.line, self.dems, self.reps, self.neutrals, \
+            self.unknowns, self.date_text, self.counties_text
 
     def update(self, frame):
         x, y, s, c, w = self.stream[frame]
@@ -233,7 +270,13 @@ def process_election_data(election_data):
     return county_data
 
 
-def gen_plot_data(covid_data, dates):
+def gen_plot_data(covid_data, dates, graph_type: CovidType):
+
+    y_values = {
+        CovidType.CASES: "caseDensity",
+        CovidType.DEATHS: "deathDensity"
+
+    }
 
     def data_stream():
         for date in dates:
@@ -246,22 +289,22 @@ def gen_plot_data(covid_data, dates):
                       .get(date, {"vaccinationsCompletedRatio": None})
                       .get("vaccinationsCompletedRatio") is not None
                   and county
-                      .get("data", {date: {"caseDensity": None}})
-                      .get(date, {"caseDensity": None})
-                      .get("caseDensity") is not None
+                      .get("data", {date: {y_values[graph_type]: None}})
+                      .get(date, {y_values[graph_type]: None})
+                      .get(y_values[graph_type]) is not None
                   ]
 
             # y-axis values case density
-            ys = [county["data"][date]["caseDensity"]
+            ys = [county["data"][date][y_values[graph_type]]
                   for county in covid_data
                   if county
                       .get("data", {date: {"vaccinationsCompletedRatio": None}})
                       .get(date, {"vaccinationsCompletedRatio": None})
                       .get("vaccinationsCompletedRatio") is not None
                   and county
-                      .get("data", {date: {"caseDensity": None}})
-                      .get(date, {"caseDensity": None})
-                      .get("caseDensity") is not None
+                      .get("data", {date: {y_values[graph_type]: None}})
+                      .get(date, {y_values[graph_type]: None})
+                      .get(y_values[graph_type]) is not None
                   ]
 
             # y-axis based on 2020 election margin
@@ -277,9 +320,9 @@ def gen_plot_data(covid_data, dates):
                       .get(date, {"vaccinationsCompletedRatio": None})
                       .get("vaccinationsCompletedRatio") is not None
                   and county
-                      .get("data", {date: {"caseDensity": None}})
-                      .get(date, {"caseDensity": None})
-                      .get("caseDensity") is not None
+                      .get("data", {date: {y_values[graph_type]: None}})
+                      .get(date, {y_values[graph_type]: None})
+                      .get(y_values[graph_type]) is not None
                   ]
             # weights
             ws = [county["population"]
@@ -289,9 +332,9 @@ def gen_plot_data(covid_data, dates):
                       .get(date, {"vaccinationsCompletedRatio": None})
                       .get("vaccinationsCompletedRatio") is not None
                   and county
-                      .get("data", {date: {"caseDensity": None}})
-                      .get(date, {"caseDensity": None})
-                      .get("caseDensity") is not None
+                      .get("data", {date: {y_values[graph_type]: None}})
+                      .get(date, {y_values[graph_type]: None})
+                      .get(y_values[graph_type]) is not None
                   ]
             cs = [county["color"]
                   for county in covid_data
@@ -300,9 +343,9 @@ def gen_plot_data(covid_data, dates):
                       .get(date, {"vaccinationsCompletedRatio": None})
                       .get("vaccinationsCompletedRatio") is not None
                   and county
-                      .get("data", {date: {"caseDensity": None}})
-                      .get(date, {"caseDensity": None})
-                      .get("caseDensity") is not None
+                      .get("data", {date: {y_values[graph_type]: None}})
+                      .get(date, {y_values[graph_type]: None})
+                      .get(y_values[graph_type]) is not None
                   ]
             # chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
             # for limit in range(int(min(xs)//10), int(max([x for x in xs if x < 100])//10 * 10 +10), 10):
@@ -341,9 +384,45 @@ def fill_in_blank_dates(covid_data):
         for date in dates:
             last_record = current_record
             current_record = county["data"].get(date)
+            if current_record is not None and last_record is not None:
+                if current_record.get("totalDeaths") is None \
+                        and last_record.get("totalDeaths") is not None:
+                    county["data"][date]["totalDeaths"] = last_record["totalDeaths"]
+                if current_record.get("caseDensity") is None \
+                        and last_record.get("caseDensity") is not None:
+                    county["data"][date]["caseDensity"] = last_record["caseDensity"]
+                if current_record.get("vaccinationsCompletedRatio") is None \
+                        and last_record.get("vaccinationsCompletedRatio") is not None:
+                    county["data"][date]["vaccinationsCompletedRatio"] = \
+                        last_record["vaccinationsCompletedRatio"]
+                if current_record.get("vaccinationsInitiatedRatio") is None \
+                        and last_record.get("vaccinationsInitiatedRatio") is not None:
+                    county["data"][date]["vaccinationsInitiatedRatio"] = \
+                        last_record["vaccinationsInitiatedRatio"]
+
             if current_record is None and last_record is not None:
                 county["data"][date] = last_record
                 current_record = last_record
+
+
+def calculate_death_density(covid_data):
+    base = datetime.today()
+    day_trend = 7
+    date_list = [base - timedelta(days=x) for x
+                 in range(GenAnimation.days + day_trend, 0, -GenAnimation.step)]
+    dates = [date.strftime("%Y-%m-%d") for date in date_list]
+
+    for county in covid_data:
+        first_index = None
+        for index, date in enumerate(dates):
+            if county["data"].get(date) and county["data"][date].get("totalDeaths") \
+                    and first_index is None:
+                first_index = index
+            if first_index is not None and index >= first_index + day_trend:
+                county["data"][date]["deathDensity"] = (
+                    county["data"][date]["totalDeaths"] -
+                    county["data"][dates[index - day_trend]]["totalDeaths"])/day_trend * \
+                                                       100000 / county['population']
 
 
 def select_counties(covid_data):
@@ -361,6 +440,8 @@ def select_counties(covid_data):
 
 def main():
 
+    graph_type = CovidType.DEATHS
+
     election_data = get_processed_election_data()
     if election_data is None:
         election_data = json.loads(get_election_data())
@@ -370,13 +451,14 @@ def main():
     covid_data = get_covid_data()
     save_covid_data(covid_data)
     fill_in_blank_dates(covid_data)
+    calculate_death_density(covid_data)
     # select_counties(covid_data)
 
     add_election_info_to_covid_data(covid_data, election_data)
     base = datetime.today()
     date_list = [base - timedelta(days=x) for x in range(GenAnimation.days, 0, -GenAnimation.step)]
     dates = [date.strftime("%Y-%m-%d") for date in date_list]
-    stream_data = gen_plot_data(covid_data, dates)
+    stream_data = gen_plot_data(covid_data, dates, graph_type)
 
     # give a array of subplots for data going back in time
     # fig = plt.figure()
@@ -402,10 +484,14 @@ def main():
     #
     # plt.show()
 
-    animation = GenAnimation(stream_data, dates)
+    animation = GenAnimation(stream_data, dates, graph_type)
 
     # to save an animation you need to have ffmpeg installed: brew install ffmpeg
-    f = "covid_animation.mp4"
+    file_names = {
+        CovidType.CASES: "covid_animation.mp4",
+        CovidType.DEATHS: "covid_animation_death.mp4"
+    }
+    f = file_names[graph_type]
     writer_mp4 = FFMpegWriter(fps=15)
     animation.ani.save(f, writer=writer_mp4)
 
