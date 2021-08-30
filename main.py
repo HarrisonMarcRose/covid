@@ -123,10 +123,8 @@ class GenAnimation:
             self.rep = [point for point in data if point[3] == max(c)][0]
             _, mid_c = min([(abs(0.5 - color[0]), color) for color in c if color[1] == 0])
             self.neutral = [point for point in data if point[3] == mid_c][0]
-            self.unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
-
-            self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .95, '', fontsize=12,
-                                              horizontalalignment='center')
+            if graph != CovidType.VACCINATED:
+                self.unknown = [point for point in data if point[3] == (0.5, 0.5, 0.5)][0]
 
         # get 5 standard deviations of y values as they have an atypical distribution
         all_ys = []
@@ -139,15 +137,24 @@ class GenAnimation:
             self.max_y = np.std(all_ys) * 6 + sum(all_ys) / len(all_ys)
             self.min_y = 0
             self.min_x = max(self.dem[0], self.rep[0], self.neutral[0], self.unknown[0]) + 1
-        else:
+        if graph == CovidType.GROUPED_CASES:
             self.max_y = np.std(all_ys) * 2 + sum(all_ys) / len(all_ys)
             self.min_y = min(all_ys)
             self.min_x = 0
-        # self.max_y = max(stream[-1][1])
-        # self.min_y = min(stream[0][1])
+        if graph == CovidType.VACCINATED:
+            self.max_y = max(stream[-1][1]) + 5
+            self.min_y = min(stream[-1][1]) - 5
+            self.min_x = 0
 
-        self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12,
-                                      horizontalalignment='center')
+        if graph == CovidType.VACCINATED:
+            self.date_text = self.ax.text(self.max_x/2, self.max_y*.9, '', fontsize=12,
+                                          horizontalalignment='center')
+        else:
+            self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12,
+                                          horizontalalignment='center')
+        if graph != CovidType.GROUPED_CASES:
+            self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .95, '', fontsize=12,
+                                              horizontalalignment='center')
 
         self.dates = dates
         self.ani = FuncAnimation(self.fig,
@@ -171,7 +178,7 @@ class GenAnimation:
             CovidType.CASES: 'cases per 100K',
             CovidType.GROUPED_CASES: 'cases per 100K',
             CovidType.DEATHS: 'deaths per 100K',
-            CovidType.VACCINATED: 'dem vs rep county'
+            CovidType.VACCINATED: '2020 election margin'
         }
         plt.ylabel(y_labels.get(self.graph))
 
@@ -182,7 +189,9 @@ class GenAnimation:
             CovidType.GROUPED_CASES: 'Covid US county case vs vaccine rate '
                                      '(with population and 2020 election)',
             CovidType.DEATHS: 'Covid US county death vs vaccine rate '
-                              '(with population and 2020 election)'
+                              '(with population and 2020 election)',
+            CovidType.VACCINATED: 'Covid US county vaccine rate '
+                                  'vs 2020 election (size=population)'
         }
         plt.title(titles.get(self.graph))
         # showing legend
@@ -202,9 +211,10 @@ class GenAnimation:
             self.neutrals = self.ax.scatter(
                 [self.neutral[0]], [self.neutral[1]], [self.neutral[2]], [self.neutral[3]],
                 label="pop: {}0K, neutral".format(int(self.neutral[2]-2)))
-            self.unknowns = self.ax.scatter(
-                [self.unknown[0]], [self.unknown[1]], [self.unknown[2]], [self.unknown[3]],
-                label="pop: {}0K, unknown".format(int(self.unknown[2]-2)))
+            if self.graph != CovidType.VACCINATED:
+                self.unknowns = self.ax.scatter(
+                    [self.unknown[0]], [self.unknown[1]], [self.unknown[2]], [self.unknown[3]],
+                    label="pop: {}0K, unknown".format(int(self.unknown[2]-2)))
         self.ax.axis([self.min_x, self.max_x, self.min_y, self.max_y])
         self.legend = plt.legend()
 
@@ -214,6 +224,10 @@ class GenAnimation:
 
         if self.graph == CovidType.GROUPED_CASES:
             return self.scat, self.line, self.date_text
+
+        if self.graph == CovidType.VACCINATED:
+            return self.scat, self.line, self.date_text, self.counties_text, \
+                   self.dems, self.reps, self.neutrals,
 
         return self.scat, self.line,  self.date_text, self.counties_text,\
             self.dems, self.reps, self.neutrals, self.unknowns
@@ -301,79 +315,112 @@ def gen_plot_data(covid_data, dates, graph_type: CovidType):
     y_values = {
         CovidType.CASES: "caseDensity",
         CovidType.GROUPED_CASES: "caseDensity",
-        CovidType.DEATHS: "deathDensity"
+        CovidType.DEATHS: "deathDensity",
+        CovidType.VACCINATED: "pct_dem_lead"
 
     }
 
     def data_stream():
         for date in dates:
 
-            # x-axis values
-            xs = [county["data"][date]["vaccinationsCompletedRatio"] * 100
-                  for county in covid_data
-                  if county
-                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
-                      .get(date, {"vaccinationsCompletedRatio": None})
-                      .get("vaccinationsCompletedRatio") is not None
-                  and county
-                      .get("data", {date: {y_values[graph_type]: None}})
-                      .get(date, {y_values[graph_type]: None})
-                      .get(y_values[graph_type]) is not None
-                  ]
+            if graph_type != CovidType.VACCINATED:
+                # x-axis values
+                xs = [county["data"][date]["vaccinationsCompletedRatio"] * 100
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county
+                          .get("data", {date: {y_values[graph_type]: None}})
+                          .get(date, {y_values[graph_type]: None})
+                          .get(y_values[graph_type]) is not None
+                      ]
+                # y-axis values case density
+                ys = [county["data"][date][y_values[graph_type]]
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county
+                          .get("data", {date: {y_values[graph_type]: None}})
+                          .get(date, {y_values[graph_type]: None})
+                          .get(y_values[graph_type]) is not None
+                      ]
+                # size
+                ss = [max(1, county["population"] / 10000) + 2
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county
+                          .get("data", {date: {y_values[graph_type]: None}})
+                          .get(date, {y_values[graph_type]: None})
+                          .get(y_values[graph_type]) is not None
+                      ]
+                # weights
+                ws = [county["population"]
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county
+                          .get("data", {date: {y_values[graph_type]: None}})
+                          .get(date, {y_values[graph_type]: None})
+                          .get(y_values[graph_type]) is not None
+                      ]
+                cs = [county["color"]
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county
+                          .get("data", {date: {y_values[graph_type]: None}})
+                          .get(date, {y_values[graph_type]: None})
+                          .get(y_values[graph_type]) is not None
+                      ]
+            else:
+                xs = [county["data"][date]["vaccinationsCompletedRatio"] * 100
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county["pct_dem_lead"]]
+                ys = [county["pct_dem_lead"] * 100
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county["pct_dem_lead"]]
+                ss = [max(1, county["population"] / 10000) + 2
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county["pct_dem_lead"]]
+                # weights
+                ws = [county["population"]
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county["pct_dem_lead"]]
+                cs = [county["color"]
+                      for county in covid_data
+                      if county
+                          .get("data", {date: {"vaccinationsCompletedRatio": None}})
+                          .get(date, {"vaccinationsCompletedRatio": None})
+                          .get("vaccinationsCompletedRatio") is not None
+                      and county["pct_dem_lead"]]
 
-            # y-axis values case density
-            ys = [county["data"][date][y_values[graph_type]]
-                  for county in covid_data
-                  if county
-                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
-                      .get(date, {"vaccinationsCompletedRatio": None})
-                      .get("vaccinationsCompletedRatio") is not None
-                  and county
-                      .get("data", {date: {y_values[graph_type]: None}})
-                      .get(date, {y_values[graph_type]: None})
-                      .get(y_values[graph_type]) is not None
-                  ]
-
-            # y-axis based on 2020 election margin
-            # ys = [county["pct_dem_lead"]
-            #       for county in covid_data
-            #       if county.get("data", {date: None}).get(date) and county["pct_dem_lead"]]
-
-            # size
-            ss = [max(1, county["population"] / 10000) + 2
-                  for county in covid_data
-                  if county
-                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
-                      .get(date, {"vaccinationsCompletedRatio": None})
-                      .get("vaccinationsCompletedRatio") is not None
-                  and county
-                      .get("data", {date: {y_values[graph_type]: None}})
-                      .get(date, {y_values[graph_type]: None})
-                      .get(y_values[graph_type]) is not None
-                  ]
-            # weights
-            ws = [county["population"]
-                  for county in covid_data
-                  if county
-                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
-                      .get(date, {"vaccinationsCompletedRatio": None})
-                      .get("vaccinationsCompletedRatio") is not None
-                  and county
-                      .get("data", {date: {y_values[graph_type]: None}})
-                      .get(date, {y_values[graph_type]: None})
-                      .get(y_values[graph_type]) is not None
-                  ]
-            cs = [county["color"]
-                  for county in covid_data
-                  if county
-                      .get("data", {date: {"vaccinationsCompletedRatio": None}})
-                      .get(date, {"vaccinationsCompletedRatio": None})
-                      .get("vaccinationsCompletedRatio") is not None
-                  and county
-                      .get("data", {date: {y_values[graph_type]: None}})
-                      .get(date, {y_values[graph_type]: None})
-                      .get(y_values[graph_type]) is not None
-                  ]
             if graph_type == CovidType.GROUPED_CASES:
                 chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
                 for limit in range(int(min(xs)//10),
@@ -475,7 +522,7 @@ def select_counties(covid_data):
 
 def main():
 
-    graph_type = CovidType.GROUPED_CASES
+    graph_type = CovidType.VACCINATED
 
     election_data = get_processed_election_data()
     if election_data is None:
@@ -525,7 +572,8 @@ def main():
     file_names = {
         CovidType.CASES: "covid_animation.mp4",
         CovidType.GROUPED_CASES: "covid_animation_grouped.mp4",
-        CovidType.DEATHS: "covid_animation_death.mp4"
+        CovidType.DEATHS: "covid_animation_death.mp4",
+        CovidType.VACCINATED: "covid_animation_margin.mp4"
     }
     f = file_names[graph_type]
     writer_mp4 = FFMpegWriter(fps=15)
