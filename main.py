@@ -1,4 +1,5 @@
 import json
+from argparse import ArgumentParser
 from datetime import datetime, timedelta
 from enum import Enum
 from os import path
@@ -11,10 +12,13 @@ from matplotlib.animation import FuncAnimation, FFMpegWriter
 
 
 class CovidType(Enum):
-    CASES = 0
-    VACCINATED = 1
-    GROUPED_CASES = 2
-    DEATHS = 3
+    CASES = "cases"
+    VACCINATED = "margin"
+    GROUPED_CASES = "grouped"
+    DEATHS = "deaths"
+
+    def __str__(self):
+        return self.value
 
 
 def give_me_a_straight_line(xs, ys, ws):
@@ -521,8 +525,10 @@ def select_counties(covid_data):
 
 
 def main():
-
-    graph_type = CovidType.VACCINATED
+    parser = ArgumentParser()
+    parser.add_argument('graph', type=CovidType, choices=list(CovidType))
+    opts = parser.parse_args()
+    graph_type = CovidType(opts.graph)
 
     election_data = get_processed_election_data()
     if election_data is None:
