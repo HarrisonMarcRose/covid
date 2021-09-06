@@ -142,7 +142,7 @@ class GenAnimation:
             self.min_y = 0
             self.min_x = max(self.dem[0], self.rep[0], self.neutral[0], self.unknown[0]) + 1
         if graph == CovidType.GROUPED_CASES:
-            self.max_y = np.std(all_ys) * 2 + sum(all_ys) / len(all_ys)
+            self.max_y = np.std(all_ys) * 3 + sum(all_ys) / len(all_ys)
             self.min_y = min(all_ys)
             self.min_x = 0
         if graph == CovidType.VACCINATED:
@@ -314,7 +314,7 @@ def process_election_data(election_data):
     return county_data
 
 
-def gen_plot_data(covid_data, dates, graph_type: CovidType):
+def gen_plot_data(covid_data, dates, graph_type: CovidType, group=10):
 
     y_values = {
         CovidType.CASES: "caseDensity",
@@ -428,30 +428,31 @@ def gen_plot_data(covid_data, dates, graph_type: CovidType):
             if graph_type == CovidType.GROUPED_CASES:
                 chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
                 for limit in range(int(min(xs)//10),
-                                   int(max([x for x in xs if x < 100])//10 * 10 + 10), 10):
+                                   int(max([x for x in xs if x < 100])//group * group + group),
+                                   group):
 
-                    if [x for x in xs if limit <= x < limit + 10]:
-                        chuncked_xs.append(mean([x for x in xs if limit <= x < limit + 10]))
+                    if [x for x in xs if limit <= x < limit + group]:
+                        chuncked_xs.append(mean([x for x in xs if limit <= x < limit + group]))
                         chuncked_ss.append(sum([w / 10000 for w, x in list(zip(ws, xs))
-                                                if limit <= x < limit + 10]))
+                                                if limit <= x < limit + group]))
                         chuncked_ys.append(np.average([y for y, x in list(zip(ys, xs))
-                                                       if limit <= x < limit + 10],
+                                                       if limit <= x < limit + group],
                                                       weights=[w for w, x in list(zip(ws, xs))
-                                                               if limit <= x < limit + 10]))
+                                                               if limit <= x < limit + group]))
                         chuncked_cs.append(
                             (
                                 np.average([c[0] for c, x in list(zip(cs, xs))
-                                            if limit <= x < limit + 10],
+                                            if limit <= x < limit + group],
                                            weights=[w for w, x in list(zip(ws, xs))
-                                                    if limit <= x < limit + 10]),
+                                                    if limit <= x < limit + group]),
                                 np.average([c[1] for c, x in list(zip(cs, xs))
-                                            if limit <= x < limit + 10],
+                                            if limit <= x < limit + group],
                                            weights=[w for w, x in list(zip(ws, xs))
-                                                    if limit <= x < limit + 10]),
+                                                    if limit <= x < limit + group]),
                                 np.average([c[2] for c, x in list(zip(cs, xs))
-                                            if limit <= x < limit + 10],
+                                            if limit <= x < limit + group],
                                            weights=[w for w, x in list(zip(ws, xs))
-                                                    if limit <= x < limit + 10])))
+                                                    if limit <= x < limit + group])))
 
                 yield chuncked_xs, chuncked_ys, chuncked_ss, chuncked_cs, chuncked_ss
                 continue
@@ -527,6 +528,7 @@ def select_counties(covid_data):
 def main():
     parser = ArgumentParser()
     parser.add_argument('graph', type=CovidType, choices=list(CovidType))
+    parser.add_argument('--group', type=int, default=10, help="vaccinated in groups of x percent")
     opts = parser.parse_args()
     graph_type = CovidType(opts.graph)
 
@@ -546,7 +548,7 @@ def main():
     base = datetime.today()
     date_list = [base - timedelta(days=x) for x in range(GenAnimation.days, 0, -GenAnimation.step)]
     dates = [date.strftime("%Y-%m-%d") for date in date_list]
-    stream_data = gen_plot_data(covid_data, dates, graph_type)
+    stream_data = gen_plot_data(covid_data, dates, graph_type, opts.group)
 
     # give a array of subplots for data going back in time
     # fig = plt.figure()
@@ -577,7 +579,7 @@ def main():
     # to save an animation you need to have ffmpeg installed: brew install ffmpeg
     file_names = {
         CovidType.CASES: "covid_animation.mp4",
-        CovidType.GROUPED_CASES: "covid_animation_grouped.mp4",
+        CovidType.GROUPED_CASES: "covid_animation_grouped_{}.mp4".format(opts.group),
         CovidType.DEATHS: "covid_animation_death.mp4",
         CovidType.VACCINATED: "covid_animation_margin.mp4"
     }
