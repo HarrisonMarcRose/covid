@@ -14,17 +14,21 @@ from matplotlib.animation import FuncAnimation, FFMpegWriter
 class CovidType(Enum):
     CASES = "cases"
     VACCINATED = "margin"
-    GROUPED_CASES = "grouped"
+    GROUPED_CASES = "cases group"
+    GROUPED_DEATHS = "deaths group"
     DEATHS = "deaths"
 
     def __str__(self):
         return self.value
 
 
-def give_me_a_straight_line(xs, ys, ws):
-    w, b = np.polyfit(xs, ys, w=ws, deg=1)
-    # w, b = np.polyfit(xs, ys, deg=1)  # unweighted
-    line = [w * x + b for x in xs]
+def give_me_a_straight_line(xs, ys, ws, graph:CovidType = CovidType.CASES):
+    if graph != CovidType.VACCINATED:
+        z = np.polyfit(xs, ys, 1, w=ws)
+    else:
+        z = np.polyfit(xs, ys, 1)
+    f = np.poly1d(z)
+    line = [f(x) for x in xs]
     return line
 
 
@@ -119,7 +123,7 @@ class GenAnimation:
         self.line, self.legend, self.scat = None, None, None
         self.dems, self.reps, self.neutrals, self.unknowns = None, None, None, None
 
-        if graph != CovidType.GROUPED_CASES:
+        if graph not in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
             # pick specific points to add to the legend
             x, y, s, c, w = self.stream[0]
             data = list(zip(x, y, s, c, w))
@@ -141,24 +145,27 @@ class GenAnimation:
             self.max_y = np.std(all_ys) * 6 + sum(all_ys) / len(all_ys)
             self.min_y = 0
             self.min_x = max(self.dem[0], self.rep[0], self.neutral[0], self.unknown[0]) + 1
-        if graph == CovidType.GROUPED_CASES:
+        if graph in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
             self.max_y = np.std(all_ys) * 3 + sum(all_ys) / len(all_ys)
-            self.min_y = min(all_ys)
+            self.min_y = max(min(all_ys), 0)
             self.min_x = 0
         if graph == CovidType.VACCINATED:
             self.max_y = max(stream[-1][1]) + 5
             self.min_y = min(stream[-1][1]) - 5
-            self.min_x = 0
+            self.min_x = max(self.dem[0], self.rep[0], self.neutral[0]) + 2
 
         if graph == CovidType.VACCINATED:
             self.date_text = self.ax.text(self.max_x/2, self.max_y*.9, '', fontsize=12,
                                           horizontalalignment='center')
+            if graph not in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
+                self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .9, '', fontsize=12,
+                                                  horizontalalignment='center')
         else:
             self.date_text = self.ax.text(self.max_x/2, self.max_y*.95, '', fontsize=12,
                                           horizontalalignment='center')
-        if graph != CovidType.GROUPED_CASES:
-            self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .95, '', fontsize=12,
-                                              horizontalalignment='center')
+            if graph not in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
+                self.counties_text = self.ax.text(self.max_x / 3, self.max_y * .95, '', fontsize=12,
+                                                  horizontalalignment='center')
 
         self.dates = dates
         self.ani = FuncAnimation(self.fig,
@@ -171,7 +178,7 @@ class GenAnimation:
         """Initial drawing of the scatter plot."""
         x, y, s, c, w = self.stream[0]
         self.date_text.set_text(self.dates[0])
-        if self.graph != CovidType.GROUPED_CASES:
+        if self.graph not in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
             self.counties_text.set_text("{} counties".format(len(x)))
 
         # x-axis label
@@ -182,6 +189,7 @@ class GenAnimation:
             CovidType.CASES: 'cases per 100K',
             CovidType.GROUPED_CASES: 'cases per 100K',
             CovidType.DEATHS: 'deaths per 100K',
+            CovidType.GROUPED_DEATHS: 'deaths per 100K',
             CovidType.VACCINATED: '2020 election margin'
         }
         plt.ylabel(y_labels.get(self.graph))
@@ -194,6 +202,8 @@ class GenAnimation:
                                      '(with population and 2020 election)',
             CovidType.DEATHS: 'Covid US county death vs vaccine rate '
                               '(with population and 2020 election)',
+            CovidType.GROUPED_DEATHS: 'Covid US county death vs vaccine rate '
+                                      '(with population and 2020 election)',
             CovidType.VACCINATED: 'Covid US county vaccine rate '
                                   'vs 2020 election (size=population)'
         }
@@ -201,24 +211,25 @@ class GenAnimation:
         # showing legend
 
         # best line fit
-        ys = give_me_a_straight_line(x, y, w)
-        self.line, = self.ax.plot(x, ys, 'k:', label='best fit trend-line')
+        if self.graph != CovidType.VACCINATED:
+            ys = give_me_a_straight_line(x, y, w, graph=self.graph)
+            self.line, = self.ax.plot(x, ys, 'k:', label='best fit trend-line')
 
-        if self.graph != CovidType.GROUPED_CASES:
+        if self.graph not in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
             # add points to legend
             self.dems = self.ax.scatter(
                 [self.dem[0]], [self.dem[1]], [self.dem[2]], [self.dem[3]],
-                label="pop: {}0K, dem".format(int(self.dem[2]-2)))
+                label="pop: {}0K, dem".format(int(self.dem[2])))
             self.reps = self.ax.scatter(
                 [self.rep[0]], [self.rep[1]], [self.rep[2]], [self.rep[3]],
-                label="pop: {}0K, rep".format(int(self.rep[2]-2)))
+                label="pop: {}0K, rep".format(int(self.rep[2])))
             self.neutrals = self.ax.scatter(
                 [self.neutral[0]], [self.neutral[1]], [self.neutral[2]], [self.neutral[3]],
-                label="pop: {}0K, neutral".format(int(self.neutral[2]-2)))
+                label="pop: {}0K, neutral".format(int(self.neutral[2])))
             if self.graph != CovidType.VACCINATED:
                 self.unknowns = self.ax.scatter(
                     [self.unknown[0]], [self.unknown[1]], [self.unknown[2]], [self.unknown[3]],
-                    label="pop: {}0K, unknown".format(int(self.unknown[2]-2)))
+                    label="pop: {}0K, unknown".format(int(self.unknown[2])))
         self.ax.axis([self.min_x, self.max_x, self.min_y, self.max_y])
         self.legend = plt.legend()
 
@@ -226,11 +237,11 @@ class GenAnimation:
 
         self.fig.tight_layout()
 
-        if self.graph == CovidType.GROUPED_CASES:
+        if self.graph in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
             return self.scat, self.line, self.date_text
 
         if self.graph == CovidType.VACCINATED:
-            return self.scat, self.line, self.date_text, self.counties_text, \
+            return self.scat, self.date_text, self.counties_text, \
                    self.dems, self.reps, self.neutrals,
 
         return self.scat, self.line,  self.date_text, self.counties_text,\
@@ -244,19 +255,23 @@ class GenAnimation:
         self.scat.set_color(np.array(c))
 
         self.date_text.set_text(self.dates[frame])
-        if self.graph != CovidType.GROUPED_CASES:
+        if self.graph not in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
             self.counties_text.set_text("{} counties".format(len(x)))
 
-        # best line fit
-        ys = give_me_a_straight_line(x, y, w)
-        self.line.set_xdata(x)
-        self.line.set_ydata(ys)
-        self.line.set_label('best fit trend-line')
+        if self.graph != CovidType.VACCINATED:
+            # best line fit
+            ys = give_me_a_straight_line(x, y, w, graph=self.graph)
+            self.line.set_xdata(x)
+            self.line.set_ydata(ys)
+            self.line.set_label('best fit trend-line')
 
         self.dems, self.reps, self.neutrals, self.unknowns = None, None, None, None
 
-        if self.graph == CovidType.GROUPED_CASES:
+        if self.graph in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
             return self.scat, self.line, self.date_text
+
+        if self.graph == CovidType.VACCINATED:
+            return self.scat, self.date_text, self.counties_text
 
         return self.scat, self.line, self.date_text, self.counties_text
 
@@ -320,6 +335,7 @@ def gen_plot_data(covid_data, dates, graph_type: CovidType, group=10):
         CovidType.CASES: "caseDensity",
         CovidType.GROUPED_CASES: "caseDensity",
         CovidType.DEATHS: "deathDensity",
+        CovidType.GROUPED_DEATHS: "deathDensity",
         CovidType.VACCINATED: "pct_dem_lead"
 
     }
@@ -353,7 +369,7 @@ def gen_plot_data(covid_data, dates, graph_type: CovidType, group=10):
                           .get(y_values[graph_type]) is not None
                       ]
                 # size
-                ss = [max(1, county["population"] / 10000) + 2
+                ss = [max(1, county["population"] / 10000)
                       for county in covid_data
                       if county
                           .get("data", {date: {"vaccinationsCompletedRatio": None}})
@@ -402,7 +418,7 @@ def gen_plot_data(covid_data, dates, graph_type: CovidType, group=10):
                           .get(date, {"vaccinationsCompletedRatio": None})
                           .get("vaccinationsCompletedRatio") is not None
                       and county["pct_dem_lead"]]
-                ss = [max(1, county["population"] / 10000) + 2
+                ss = [max(1, county["population"] / 10000)
                       for county in covid_data
                       if county
                           .get("data", {date: {"vaccinationsCompletedRatio": None}})
@@ -425,14 +441,17 @@ def gen_plot_data(covid_data, dates, graph_type: CovidType, group=10):
                           .get("vaccinationsCompletedRatio") is not None
                       and county["pct_dem_lead"]]
 
-            if graph_type == CovidType.GROUPED_CASES:
+            if graph_type in (CovidType.GROUPED_CASES, CovidType.GROUPED_DEATHS):
                 chuncked_xs, chuncked_ss, chuncked_ys, chuncked_cs = [], [], [], []
                 for limit in range(int(min(xs)//10),
                                    int(max([x for x in xs if x < 100])//group * group + group),
                                    group):
 
                     if [x for x in xs if limit <= x < limit + group]:
-                        chuncked_xs.append(mean([x for x in xs if limit <= x < limit + group]))
+                        chuncked_xs.append(np.average([x for x in xs
+                                                       if limit <= x < limit + group],
+                                                      weights=[w for w, x in list(zip(ws, xs))
+                                                               if limit <= x < limit + group]))
                         chuncked_ss.append(sum([w / 10000 for w, x in list(zip(ws, xs))
                                                 if limit <= x < limit + group]))
                         chuncked_ys.append(np.average([y for y, x in list(zip(ys, xs))
@@ -487,9 +506,15 @@ def fill_in_blank_dates(covid_data):
                     county["data"][date]["vaccinationsInitiatedRatio"] = \
                         last_record["vaccinationsInitiatedRatio"]
 
+                # Florida stopped reporting county-level deaths on June 4.
+                if county["state"] == "FL" and date > "2021-06-11":
+                    del county["data"][date]["totalDeaths"]
+
             if current_record is None and last_record is not None:
                 county["data"][date] = last_record
                 current_record = last_record
+                if county["state"] == "FL" and date > "2021-06-11":
+                    del county["data"][date]["totalDeaths"]
 
 
 def calculate_death_density(covid_data):
@@ -505,11 +530,24 @@ def calculate_death_density(covid_data):
             if county["data"].get(date) and county["data"][date].get("totalDeaths") \
                     and first_index is None:
                 first_index = index
-            if first_index is not None and index >= first_index + day_trend:
-                county["data"][date]["deathDensity"] = (
-                    county["data"][date]["totalDeaths"] -
-                    county["data"][dates[index - day_trend]]["totalDeaths"])/day_trend * \
-                                                       100000 / county['population']
+            if first_index is not None and index >= first_index + day_trend \
+                    and county["data"][dates[index]].get("totalDeaths"):
+                # doy 0 should be the minimum deaths and day 6 should be the max
+                # as deaths should only go up.  However, there are corrections in the data.
+                # To fix this take the max deaths - first day or last day - min deaths.
+                # This ignores days after correction or days before correction and takes
+                # a portion of the deaths that is the largest either before or after the correction
+                total_deaths = [
+                    county["data"][dates[index - days]]["totalDeaths"]
+                    for days in range(day_trend)
+                ]
+
+                # if all([x > 25 for x in total_deaths]) and total_deaths != sorted(total_deaths, reverse=True):
+                #     import pdb; pdb.set_trace()
+                county["data"][date]["deathDensity"] = max(
+                        max(total_deaths) - total_deaths[-1],  # most - first day
+                        total_deaths[0] - min(total_deaths)  # last day - minimum
+                    ) / day_trend * 100000 / county['population']
 
 
 def select_counties(covid_data):
@@ -549,37 +587,13 @@ def main():
     date_list = [base - timedelta(days=x) for x in range(GenAnimation.days, 0, -GenAnimation.step)]
     dates = [date.strftime("%Y-%m-%d") for date in date_list]
     stream_data = gen_plot_data(covid_data, dates, graph_type, opts.group)
-
-    # give a array of subplots for data going back in time
-    # fig = plt.figure()
-    # rows = 3
-    # cols = 3
-    # step_days = 14
-    # gs = fig.add_gridspec(rows, cols, hspace=0, wspace=0, left=0.05, right=0.95, bottom=0.05, top=0.95)
-    # axs = gs.subplots(sharex=True, sharey=True)
-    # for i in range(rows):
-    #     for j in range(cols):
-    #         index = - 1 - step_days * i * cols - step_days * j
-    #         axs[i, j].label_outer()
-    #         axs[i, j].axis([0, 100, 0, 150])
-    #         axs[i, j].scatter(
-    #             stream_data[index][0],
-    #             stream_data[index][1],
-    #             s=stream_data[index][2],
-    #             c=stream_data[index][3])
-    #
-    #         # best line fit
-    #         ys = give_me_a_straight_line(stream_data[index][0], stream_data[index][1], stream_data[index][4])
-    #         axs[i, j].plot(stream_data[index][0], ys, 'r--', label='best fit trend-line')
-    #
-    # plt.show()
-
     animation = GenAnimation(stream_data, dates, graph_type)
 
     # to save an animation you need to have ffmpeg installed: brew install ffmpeg
     file_names = {
         CovidType.CASES: "covid_animation.mp4",
         CovidType.GROUPED_CASES: "covid_animation_grouped_{}.mp4".format(opts.group),
+        CovidType.GROUPED_DEATHS: "covid_animation_death_grouped_{}.mp4".format(opts.group),
         CovidType.DEATHS: "covid_animation_death.mp4",
         CovidType.VACCINATED: "covid_animation_margin.mp4"
     }
